@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>3D Dashboard (HTML/CSS/JS only)</title>
+  <style>
+    :root{
+      --bg0:#070A12;
+      --bg1:#0B1631;
+      --glass: rgba(255,255,255,.06);
+      --stroke: rgba(255,255,255,.10);
+      --glow: rgba(0, 220, 255, .35);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.66);
+
+      --panelW: 520px;
+      --panelH: 320px;
+      --radius: 520px;
+
+      --tiltX: -10deg;
+      --tiltY: 18deg;
+    }
+
+    *{ box-sizing:border-box; }
+    html, body { height:100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: var(--text);
+      background: radial-gradient(1200px 900px at 60% 20%, #122B66 0%, var(--bg0) 60%),
+                  linear-gradient(180deg, var(--bg1), var(--bg0));
+      overflow:hidden;
+    }
+
+    /* Top HUD */
+    .hud{
+      position: fixed;
+      inset: 14px 14px auto 14px;
+      display:flex;
+      gap:12px;
+      align-items:center;
+      padding: 10px 12px;
+      border:1px solid var(--stroke);
+      background: rgba(0,0,0,.25);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      z-index: 20;
+    }
+    .hud .title{
+      font-weight:600;
+      letter-spacing:.2px;
+      margin-right: 8px;
+    }
+    .hud button{
+      border:1px solid var(--stroke);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor:pointer;
+    }
+    .hud button:active{ transform: translateY(1px); }
+    .hud label{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .hud input[type="range"]{ width: 140px; }
+
+    /* Scene */
+    .scene{
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      perspective: 1100px; /* key for 3D */
+      perspective-origin: 50% 45%;
+    }
+
+    .world{
+      position: relative;
+      width: 1px;
+      height: 1px;
+      transform-style: preserve-3d;
+      transform: rotateX(var(--tiltX)) rotateY(var(--tiltY));
+      will-change: transform;
+    }
+
+    /* Floor grid */
+    .floor{
+      position:absolute;
+      width: 1400px;
+      height: 900px;
+      transform: translateY(260px) rotateX(90deg);
+      transform-style: preserve-3d;
+      background:
+        linear-gradient(to right, rgba(255,255,255,.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,.06) 1px, transparent 1px);
+      background-size: 44px 44px;
+      opacity:.35;
+      filter: drop-shadow(0 0 30px rgba(0,220,255,.12));
+    }
+    .floor::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background: radial-gradient(closest-side, rgba(0,220,255,.20), transparent 60%);
+      transform: translateZ(2px);
+    }
+
+    /* Panels arranged in a ring */
+    .panel{
+      position:absolute;
+      width: var(--panelW);
+      height: var(--panelH);
+      border-radius: 18px;
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,.03));
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+      transform-style: preserve-3d;
+      overflow:hidden;
+    }
+    .panel::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      border-radius: 18px;
+      background: radial-gradient(700px 240px at 30% 10%, rgba(0,220,255,.22), transparent 55%);
+      pointer-events:none;
+    }
+    .panel .head{
+      position: relative;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding: 14px 16px 10px 16px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+    .panel .head .h{
+      font-weight:600;
+      letter-spacing:.2px;
+    }
+    .panel .head .t{
+      color: var(--muted);
+      font-size:12px;
+    }
+
+    .content{ padding: 14px 16px 16px; }
+
+    /* KPI cards */
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .kpi{
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 86px;
+      position:relative;
+    }
+    .kpi .label{ color: var(--muted); font-size:12px; }
+    .kpi .value{ font-size:22px; font-weight:650; margin-top: 6px; }
+    .kpi .delta{
+      margin-top: 6px;
+      font-size:12px;
+      color: rgba(0, 255, 170, .9);
+    }
+    .kpi .spark{
+      position:absolute;
+      right: 10px;
+      bottom: 10px;
+      width: 72px;
+      height: 30px;
+      opacity:.8;
+    }
+
+    /* Mini line chart (SVG) */
+    svg{ display:block; }
+
+    /* 3D bar chart */
+    .bar3d{
+      display:flex;
+      gap: 12px;
+      align-items:flex-end;
+      height: 140px;
+      padding: 10px 6px 0;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.16);
+      position:relative;
+    }
+    .bar{
+      width: 24px;
+      height: 100%;
+      position:relative;
+      transform-style: preserve-3d;
+      transform: translateZ(0);
+    }
+    .bar .stem{
+      position:absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 100%;
+      transform-origin: bottom;
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(0,220,255,.9), rgba(0,220,255,.18));
+      box-shadow: 0 0 18px rgba(0,220,255,.22);
+      transform: scaleY(.2);
+      will-change: transform;
+    }
+    .bar .stem::after{
+      content:"";
+      position:absolute;
+      top:-10px;
+      left: 0;
+      right: 0;
+      height: 10px;
+      background: rgba(255,255,255,.18);
+      border-radius: 8px 8px 3px 3px;
+      transform: rotateX(90deg) translateZ(5px);
+      transform-origin: top;
+      filter: blur(.2px);
+    }
+    .bar .cap{
+      position:absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    /* Positions (ring) */
+    .p0{ transform: rotateY(0deg)   translateZ(var(--radius)) translateY(-10px); }
+    .p1{ transform: rotateY(90deg)  translateZ(var(--radius)) translateY(-10px); }
+    .p2{ transform: rotateY(180deg) translateZ(var(--radius)) translateY(-10px); }
+    .p3{ transform: rotateY(270deg) translateZ(var(--radius)) translateY(-10px); }
+
+    /* A subtle floating */
+    .float{
+      animation: floaty 3.6s ease-in-out infinite;
+    }
+    @keyframes floaty{
+      0%,100%{ transform: translateY(0px); }
+      50%{ transform: translateY(-10px); }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce){
+      .float{ animation:none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="hud" role="toolbar" aria-label="Dashboard controls">
+    <div class="title">3D Dashboard</div>
+    <button id="btnToggle">Pause</button>
+    <button id="btnReset">Reset view</button>
+    <label>Speed <input id="speed" type="range" min="0" max="2" value="1" step="0.01" /></label>
+    <div style="color:var(--muted);font-size:12px">Drag to rotate</div>
+  </div>
+
+  <div class="scene">
+    <div class="world" id="world">
+      <div class="floor"></div>
+
+      <section class="panel p0 float" aria-label="Overview panel">
+        <div class="head">
+          <div class="h">Overview</div>
+          <div class="t" id="clock">--:--:--</div>
+        </div>
+        <div class="content">
+          <div class="kpis" id="kpis"></div>
+          <div class="bar3d" id="bars"></div>
+        </div>
+      </section>
+
+      <section class="panel p1" aria-label="Pipeline panel">
+        <div class="head">
+          <div class="h">Pipeline</div>
+          <div class="t">Weekly trend</div>
+        </div>
+        <div class="content">
+          <div style="display:grid;grid-template-columns:1.15fr .85fr;gap:12px">
+            <div class="kpi" style="min-height: 210px;">
+              <div class="label">Conversion funnel (mock)</div>
+              <div class="value" id="funnelVal">—</div>
+              <div class="delta" id="funnelDelta">—</div>
+              <div style="margin-top:10px;color:var(--muted);font-size:12px;line-height:1.45">
+                Leads → Calls → Meetings → Wins
+              </div>
+              <div style="margin-top:14px;height:96px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.14);display:grid;place-items:center;color:rgba(255,255,255,.72)">
+                3D panels are CSS transforms
+              </div>
+            </div>
+            <div class="kpi" style="min-height: 210px;">
+              <div class="label">Health</div>
+              <div class="value" id="health">—</div>
+              <div class="delta" id="healthNote">—</div>
+              <div style="margin-top:12px;height:120px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.14);padding:10px">
+                <div style="color:var(--muted);font-size:12px">Latency</div>
+                <div style="font-size:22px;font-weight:650;margin-top:6px" id="latency">—</div>
+                <div style="margin-top:12px;color:var(--muted);font-size:12px">Uptime</div>
+                <div style="font-size:18px;font-weight:650;margin-top:6px" id="uptime">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel p2" aria-label="Team panel">
+        <div class="head">
+          <div class="h">Team</div>
+          <div class="t">Today</div>
+        </div>
+        <div class="content">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="kpi" style="min-height: 254px;">
+              <div class="label">Top performer</div>
+              <div class="value" id="topName">—</div>
+              <div class="delta" id="topScore">—</div>
+              <div style="margin-top:12px;height:150px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.14);padding:10px;color:var(--muted);font-size:12px;line-height:1.55">
+                Tip: Replace the demo data in <code>const DATA</code> with your real KPIs, then bind them the same way.
+              </div>
+            </div>
+            <div class="kpi" style="min-height: 254px;">
+              <div class="label">Notes</div>
+              <div class="value" style="font-size:16px;font-weight:600">Keyboard</div>
+              <div style="margin-top:8px;color:var(--muted);font-size:12px;line-height:1.7">
+                A / D: rotate<br/>
+                W / S: tilt<br/>
+                Space: pause
+              </div>
+              <div style="margin-top:14px;height:140px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.14);display:grid;place-items:center;color:rgba(0,220,255,.85);text-shadow:0 0 18px rgba(0,220,255,.22)">
+                translateZ + rotateY
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel p3" aria-label="Alerts panel">
+        <div class="head">
+          <div class="h">Alerts</div>
+          <div class="t">Live (mock)</div>
+        </div>
+        <div class="content">
+          <div class="kpi" style="min-height: 254px;">
+            <div class="label">Events</div>
+            <div class="value" id="events">—</div>
+            <div class="delta" id="eventsNote">—</div>
+            <div style="margin-top:12px;height:160px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.14);padding:10px;overflow:auto">
+              <div id="log" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; color: rgba(255,255,255,.76)"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+<script>
+  // Demo data (edit these)
+  const DATA = {
+    kpis: [
+      { label: "Revenue", value: 128.4, suffix: "L", delta: "+6.2%", series: [8,10,9,12,11,14,16,15] },
+      { label: "Enrollments", value: 342, suffix: "", delta: "+3.1%", series: [10,11,12,10,13,12,14,15] },
+      { label: "Calls", value: 1760, suffix: "", delta: "-1.4%", series: [12,14,13,12,11,12,11,10], deltaColor: "neg" }
+    ],
+    bars: [
+      { day: "Mon", v: 0.52 }, { day: "Tue", v: 0.65 }, { day: "Wed", v: 0.40 }, { day: "Thu", v: 0.78 },
+      { day: "Fri", v: 0.71 }, { day: "Sat", v: 0.36 }, { day: "Sun", v: 0.60 }
+    ],
+    funnel: { label: "Win rate", value: 18.7, suffix: "%", delta: "+0.9% WoW" },
+    health: { score: 92, note: "Stable", latency: 148, uptime: 99.95 },
+    team: { top: "Neha", score: "Score 9.2 / 10" }
+  };
+
+  // Build KPI cards
+  const kpisEl = document.getElementById("kpis");
+  const fmt = (n) => (Math.round(n * 10) / 10).toLocaleString();
+
+  function sparkSVG(points){
+    const w = 72, h = 30, pad = 2;
+    const min = Math.min(...points), max = Math.max(...points);
+    const scaleX = (i) => pad + (i * (w - pad*2)) / (points.length - 1);
+    const scaleY = (v) => {
+      const t = (v - min) / (max - min || 1);
+      return (h - pad) - t * (h - pad*2);
+    };
+    let d = "";
+    points.forEach((v,i) => d += (i ? " L" : "M") + scaleX(i) + " " + scaleY(v));
+    return `
+      <svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">
+        <path d="${d}" fill="none" stroke="rgba(0,220,255,.85)" stroke-width="2" />
+        <path d="${d} L ${w-pad} ${h-pad} L ${pad} ${h-pad} Z" fill="rgba(0,220,255,.12)" />
+      </svg>`;
+  }
+
+  function renderKPIs(){
+    kpisEl.innerHTML = "";
+    for(const k of DATA.kpis){
+      const deltaNeg = (k.deltaColor === "neg") || (typeof k.delta === "string" && k.delta.trim().startsWith("-"));
+      const card = document.createElement("div");
+      card.className = "kpi";
+      card.innerHTML = `
+        <div class="label">${k.label}</div>
+        <div class="value">${fmt(k.value)}${k.suffix ? `<span style="opacity:.75;font-size:14px;margin-left:4px">${k.suffix}</span>` : ""}</div>
+        <div class="delta" style="color:${deltaNeg ? "rgba(255,120,120,.95)" : "rgba(0,255,170,.9)"}">${k.delta}</div>
+        <div class="spark">${sparkSVG(k.series)}</div>
+      `;
+      kpisEl.appendChild(card);
+    }
+  }
+
+  // Build bars
+  const barsEl = document.getElementById("bars");
+  let barStems = [];
+  function renderBars(){
+    barsEl.innerHTML = "";
+    barStems = [];
+    for(const b of DATA.bars){
+      const el = document.createElement("div");
+      el.className = "bar";
+      el.innerHTML = `<div class="stem"></div><div class="cap">${b.day}</div>`;
+      barsEl.appendChild(el);
+      barStems.push(el.querySelector(".stem"));
+    }
+  }
+
+  // Right-side panels content
+  const funnelVal = document.getElementById("funnelVal");
+  const funnelDelta = document.getElementById("funnelDelta");
+  const health = document.getElementById("health");
+  const healthNote = document.getElementById("healthNote");
+  const latency = document.getElementById("latency");
+  const uptime = document.getElementById("uptime");
+  const topName = document.getElementById("topName");
+  const topScore = document.getElementById("topScore");
+  const events = document.getElementById("events");
+  const eventsNote = document.getElementById("eventsNote");
+  const log = document.getElementById("log");
+  const clockEl = document.getElementById("clock");
+
+  function renderSidePanels(){
+    funnelVal.textContent = `${fmt(DATA.funnel.value)}${DATA.funnel.suffix}`;
+    funnelDelta.textContent = DATA.funnel.delta;
+
+    health.textContent = `${DATA.health.score} / 100`;
+    healthNote.textContent = DATA.health.note;
+    latency.textContent = `${DATA.health.latency} ms`;
+    uptime.textContent = `${DATA.health.uptime}%`;
+
+    topName.textContent = DATA.team.top;
+    topScore.textContent = DATA.team.score;
+  }
+
+  // Animation / camera control
+  const world = document.getElementById("world");
+  const speed = document.getElementById("speed");
+  const btnToggle = document.getElementById("btnToggle");
+  const btnReset = document.getElementById("btnReset");
+
+  let playing = true;
+  let t0 = performance.now();
+  let yaw = 18;   // degrees
+  let pitch = -10; // degrees
+  let autoYaw = 0;
+
+  const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function setWorldTransform(){
+    world.style.transform = `rotateX(${pitch}deg) rotateY(${yaw + autoYaw}deg)`;
+  }
+
+  // Drag rotate
+  let dragging = false, sx=0, sy=0, syaw=0, spitch=0;
+  window.addEventListener("pointerdown", (e)=>{
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    syaw = yaw; spitch = pitch;
+    e.target.setPointerCapture?.(e.pointerId);
+  });
+  window.addEventListener("pointermove", (e)=>{
+    if(!dragging) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    yaw = syaw + dx * 0.12;
+    pitch = Math.max(-35, Math.min(10, spitch - dy * 0.10));
+    setWorldTransform();
+  });
+  window.addEventListener("pointerup", ()=> dragging = false);
+
+  // Keys
+  window.addEventListener("keydown", (e)=>{
+    const k = e.key.toLowerCase();
+    if(k === "a") yaw -= 6;
+    if(k === "d") yaw += 6;
+    if(k === "w") pitch = Math.min(10, pitch + 3);
+    if(k === "s") pitch = Math.max(-35, pitch - 3);
+    if(k === " ") togglePlay();
+    setWorldTransform();
+  });
+
+  // Mock event log
+  let eventCount = 0;
+  function pushEvent(line){
+    const div = document.createElement("div");
+    div.textContent = line;
+    log.prepend(div);
+    while(log.childElementCount > 12) log.removeChild(log.lastElementChild);
+  }
+
+  function togglePlay(){
+    playing = !playing;
+    btnToggle.textContent = playing ? "Pause" : "Play";
+  }
+
+  btnToggle.addEventListener("click", togglePlay);
+  btnReset.addEventListener("click", ()=>{
+    yaw = 18; pitch = -10; autoYaw = 0;
+    setWorldTransform();
+  });
+
+  function tick(now){
+    // clock
+    const d = new Date();
+    clockEl.textContent = d.toLocaleTimeString();
+
+    if(playing && !prefersReducedMotion){
+      const dt = (now - t0) / 1000;
+      const s = Number(speed.value);
+
+      // Slow orbit
+      autoYaw = (dt * 18 * s) % 360;
+
+      // Bars pulse
+      const phase = dt * 1.2 * (0.5 + s);
+      DATA.bars.forEach((b, i)=>{
+        const wave = 0.12 * Math.sin(phase + i * 0.65);
+        const target = Math.max(0.08, Math.min(1, b.v + wave));
+        barStems[i].style.transform = `scaleY(${target})`;
+      });
+
+      // Event ticker
+      if(Math.floor(dt * (1.2 + s)) !== Math.floor((dt - 0.016) * (1.2 + s))){
+        eventCount++;
+        events.textContent = eventCount.toLocaleString();
+        eventsNote.textContent = "Simulated stream";
+        const hhmmss = d.toLocaleTimeString();
+        const lines = ["Sync OK", "New lead", "Stage moved", "Payment received", "Call connected", "Meeting booked"];
+        pushEvent(`[${hhmmss}] ${lines[eventCount % lines.length]}`);
+      }
+    } else {
+      // Keep bars at base levels
+      DATA.bars.forEach((b,i)=> barStems[i].style.transform = `scaleY(${b.v})`);
+    }
+
+    setWorldTransform();
+    t0 = t0 || now;
+    requestAnimationFrame(tick);
+  }
+
+  // Init
+  renderKPIs();
+  renderBars();
+  renderSidePanels();
+  events.textContent = "0";
+  eventsNote.textContent = "Simulated stream";
+  DATA.bars.forEach((b,i)=> barStems[i].style.transform = `scaleY(${b.v})`);
+  setWorldTransform();
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>
